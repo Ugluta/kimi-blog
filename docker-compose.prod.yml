@@ -1,0 +1,177 @@
+version: "3.9"
+
+# SesVizyon — Kendi Sunucunda Üretim (On-Premise)
+# Tüm bağımlılıklar yerel: Postgres, Redis, MinIO — AWS'siz.
+# Tek sunucu: bu dosya. Çok sunucu: README'deki k3s yolu.
+
+services:
+  # ---------- TLS + ters vekil: tek açık kapı (80/443) ----------
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN:-sesvizyon.local}
+
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-sesvizyon}
+      POSTGRES_PASSWORD: ${DB_PASS:?DB_PASS .env'de tanımlı olmalı}
+      POSTGRES_DB: ${DB_NAME:-sesvizyon}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-sesvizyon}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:                        # S3 görevi görür — dışarıdan erişilebilir olmalı (platformlar video URL'sinden çeker)
+    image: quay.io/minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET:?S3_SECRET tanımlı olmalı}
+    volumes: [miniodata:/data]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio: {condition: service_healthy}
+    entrypoint: >
+      /bin/sh -c "
+      sleep 3;
+      mc alias set local http://minio:9000 ${S3_ACCESS:-minioadmin} ${S3_SECRET};
+      mc mb -p local/sesvizyon-media local/sesvizyon-quarantine || true;
+      mc anonymous set download local/sesvizyon-media || true;
+      mc ilm rule add --expiry-days 90 local/sesvizyon-media || true;
+      exit 0;
+      "
+
+  api:
+    build: ./api
+    restart: always
+    deploy:
+      replicas: 3                 # HPA yerine: gerektiğinde `docker compose up -d --scale api=8`
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-sesvizyon}:${DB_PASS}@postgres:5432/${DB_NAME:-sesvizyon}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS: ${S3_ACCESS:-minioadmin}
+      S3_SECRET: ${S3_SECRET}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET tanımlı olmalı}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin1234!}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-200}
+    volumes: [uploads:/tmp/uploads]
+
+  worker:
+    build: ./worker
+    restart: always
+    deploy:
+      replicas: 2                 # render kapasitesi: --scale worker=8
+    depends_on:
+      redis: {condition: service_healthy}
+      minio-init: {condition: service_completed_successfully}
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-sesvizyon}:${DB_PASS}@postgres:5432/${DB_NAME:-sesvizyon}
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS: ${S3_ACCESS:-minioadmin}
+      S3_SECRET: ${S3_SECRET}
+      JWT_SECRET: ${JWT_SECRET}
+      PUBLIC_BASE_URL: https://media.${DOMAIN:-localhost}   # platformların çektiği video URL'i
+      # Gerçek platform token'ları (opsiyonel — yoksa demo mod):
+      TOKEN_FACEBOOK: ${TOKEN_FACEBOOK:-}
+      ACCOUNT_FACEBOOK: ${ACCOUNT_FACEBOOK:-}
+      TOKEN_TIKTOK: ${TOKEN_TIKTOK:-}
+      TOKEN_INSTAGRAM: ${TOKEN_INSTAGRAM:-}
+      ACCOUNT_INSTAGRAM: ${ACCOUNT_INSTAGRAM:-}
+      TOKEN_LINKEDIN: ${TOKEN_LINKEDIN:-}
+      ACCOUNT_LINKEDIN: ${ACCOUNT_LINKEDIN:-}
+      TOKEN_X: ${TOKEN_X:-}
+    volumes: [renders:/tmp/renders]
+
+  web:                          # Yönetim paneli
+    image: nginx:alpine
+    restart: always
+    depends_on: [api]
+    volumes:
+      - ./web/panel:/usr/share/nginx/html:ro
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # ---------- Gözlemlenebilirlik ----------
+  prometheus:
+    image: prom/prometheus:latest
+    restart: always
+    command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=15d
+    volumes:
+      - ./scripts/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: always
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASS:-grafana123}
+    volumes: [grafanadata:/var/lib/grafana]
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    restart: always
+
+  cadvisor:                     # konteyner başına CPU/RAM
+    image: zcube/cadvisor:latest
+    restart: always
+    volumes: [/:/rootfs:ro, /var/run:/var/run:ro, /sys:/sys:ro, /var/lib/docker/:/var/lib/docker:ro]
+
+  # ---------- Yedekleme: her gece 03:00 ----------
+  backup:
+    image: postgres:16-alpine
+    restart: "no"
+    profiles: ["backup"]        # otomatik çalışmaz; cron ile veya `docker compose --profile backup run backup`
+    depends_on: [postgres]
+    environment:
+      DB_PASS: ${DB_PASS}
+      S3_ACCESS: ${S3_ACCESS:-minioadmin}
+      S3_SECRET: ${S3_SECRET}
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - ./backups:/backups
+      - miniodata:/miniodata:ro
+    entrypoint: ["/bin/sh", "/backup.sh"]
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  uploads:
+  renders:
+  caddy_data:
+  caddy_config:
+  promdata:
+  grafanadata:
