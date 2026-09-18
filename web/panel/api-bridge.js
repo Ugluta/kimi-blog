@@ -5,7 +5,7 @@
    ============================================================ */
 
 const API = {
-  url: localStorage.getItem('sv_api_url') || 'http://localhost:3000',
+  get url() { return localStorage.getItem('sv_api_url') || 'http://localhost:3000'; },
   set url(v) { localStorage.setItem('sv_api_url', v); },
   get token() { return localStorage.getItem('sv_jwt'); },
   set token(v) { v ? localStorage.setItem('sv_jwt', v) : localStorage.removeItem('sv_jwt'); },
