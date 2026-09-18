@@ -151,9 +151,9 @@ services:
 
   # ---------- Yedekleme: her gece 03:00 ----------
   backup:
-    image: postgres:16-alpine
+    image: quay.io/minio/mc:latest
     restart: "no"
-    profiles: ["backup"]        # otomatik çalışmaz; cron ile veya `docker compose --profile backup run backup`
+    profiles: ["backup"]
     depends_on: [postgres]
     environment:
       DB_PASS: ${DB_PASS}
@@ -163,7 +163,10 @@ services:
       - ./scripts/backup.sh:/backup.sh:ro
       - ./backups:/backups
       - miniodata:/miniodata:ro
-    entrypoint: ["/bin/sh", "/backup.sh"]
+    entrypoint: >
+      /bin/sh -c "apk add --no-cache postgresql16-client >/dev/null 2>&1
+      || apk add --no-cache postgresql-client;
+      /backup.sh"
 
 volumes:
   pgdata:
