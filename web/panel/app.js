@@ -8,7 +8,7 @@ const DEFAULT_STATE = {
     seoTitle: 'SesVizyon | Ses\'ten Video\'ya Otomatik Yayın', seoKeywords: 'ses video, podcast video, sosyal medya otomasyon',
     maintenance: false, registration: true, apiTimeout: 30, watermark: true, maxFileMB: 200
   },
-  theme: { preset: 'mor', primary: '#6c5ce7', accent: '#00cec9' },
+  theme: { preset: 'mor', primary: '#6c5ce7', accent: '#00cec9', light: false },
   plans: [
     { id: 1, name: 'Başlangıç', price: 0, period: 'ay', videos: 5, platforms: 2, hd: false, watermark: true, color: '#8b93b8', popular: false, active: true },
     { id: 2, name: 'Pro', price: 149, period: 'ay', videos: 100, platforms: 5, hd: true, watermark: false, color: '#6c5ce7', popular: true, active: true },
@@ -94,12 +94,28 @@ const PAGES = [
 ];
 
 function renderNav() {
-  $('#nav').innerHTML = PAGES.map(p => {
-    if (p.label) return `<div class="nav-label">${p.label}</div>`;
+  const nav = $('#nav');
+  nav.innerHTML = '';
+  PAGES.forEach(p => {
+    if (p.label) {
+      const d = document.createElement('div');
+      d.className = 'nav-label';
+      d.textContent = p.label;
+      nav.appendChild(d);
+      return;
+    }
     const ok = can(p.perm);
-    return `<div class="nav-item ${ok ? '' : 'locked'}" ${ok ? `onclick="go('${p.id}')"` : `onclick="toast('Bu modüle erişim yetkiniz yok','err')"`}>
-      <span class="ico">${p.ico}</span>${p.label}</div>`;
-  }).join('');
+    const el = document.createElement('div');
+    el.className = 'nav-item' + (ok ? '' : ' locked');
+    const ico = document.createElement('span');
+    ico.className = 'ico';
+    ico.textContent = p.ico;
+    el.appendChild(ico);
+    el.appendChild(document.createTextNode(p.label));
+    if (ok) el.addEventListener('click', () => go(p.id));
+    else el.addEventListener('click', () => toast('Bu modüle erişim yetkiniz yok', 'err'));
+    nav.appendChild(el);
+  });
 }
 
 let currentPage = 'dashboard';
@@ -151,7 +167,7 @@ RENDER.dashboard = () => {
       <p>${esc(myRole().name)} rolüyle giriş yaptın. Bugün ${S.queue.filter(q => q.status !== 'published').length} bekleyen yayın var.</p></div>
       <button class="btn btn-primary" onclick="go('converter')">🎬 Yeni Video Oluştur</button>
     </div>
-    <div class="grid grid-4">
+    <div class="bento">
       <div class="stat-card"><div class="lbl">Toplam Video</div><div class="val">${S.queue.length}</div><div class="tr up">▲ %12 bu ay</div></div>
       <div class="stat-card"><div class="lbl">Yayınlanan</div><div class="val">${published}</div><div class="tr up">▲ %8 bu ay</div></div>
       <div class="stat-card"><div class="lbl">Bağlı Hesap</div><div class="val">${connected}/5</div><div class="tr ${connected ? 'up' : 'down'}">${connected ? 'Aktif' : 'Bağlantı yok'}</div></div>
