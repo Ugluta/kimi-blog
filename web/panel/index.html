@@ -189,7 +189,22 @@ input[type=color]{padding:3px;height:44px;cursor:pointer}
 .empty{padding:40px;text-align:center;color:var(--muted);font-size:13.5px}
 .section-title{font-size:12px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:26px 0 12px;font-weight:700}
 .avatar-s{width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#fff}
-@media(max-width:1100px){.grid-4{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:1fr}}
+@media(max-width:1100px){.grid-4{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:1fr}.bento{grid-template-columns:1fr 1fr}}
+
+/* ---------- LIGHT TEMA ---------- */
+body.light{--bg:#eef1f8;--bg2:#ffffff;--panel:#ffffff;--panel2:#f4f6fc;--border:#dce2f0;--text:#1c2340;--muted:#5d6890}
+body.light .topbar{background:rgba(255,255,255,.82)}
+body.light .sidebar{background:linear-gradient(180deg,#ffffff,#f6f8fd)}
+body.light .nav-item.active{background:linear-gradient(90deg,rgba(108,92,231,.14),rgba(0,206,201,.07))}
+body.light .brand,body.light .sidebar-foot{border-color:var(--border)}
+body.light .nav-item:hover{background:rgba(108,92,231,.07)}
+body.light .stat-card::after{background:radial-gradient(circle,rgba(108,92,231,.10),transparent 70%)}
+body.light .search-box,body.light .icon-btn,body.light .user-chip{background:#f4f6fc}
+
+/* ---------- BENTO GRID (dashboard) ---------- */
+.bento{display:grid;grid-template-columns:repeat(4,1fr);gap:18px}
+.bento .stat-card:first-child{grid-column:span 2}
+.bento .stat-card:first-child .val{font-size:38px}
 </style>
 </head>
 <body>
@@ -231,7 +246,7 @@ input[type=color]{padding:3px;height:44px;cursor:pointer}
 </div>
 <div class="toasts" id="toasts"></div>
 
-<script src="app.js?v=20260918-1"></script>
-<script src="api-bridge.js?v=20260918-1"></script>
+<script src="app.js?v=20260918-2"></script>
+<script src="api-bridge.js?v=20260918-2"></script>
 </body>
 </html>

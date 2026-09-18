@@ -137,6 +137,14 @@ function applyTheme() {
   r.setProperty('--primary', S.theme.primary);
   r.setProperty('--accent', S.theme.accent);
   r.setProperty('--primary2', S.theme.primary + 'cc');
+  document.body.classList.toggle('light', !!S.theme.light);
+  const t = $('#themeToggle');
+  if (t) t.textContent = S.theme.light ? '☀️' : '🌙';
+}
+function toggleLight() {
+  S.theme.light = !S.theme.light;
+  save(); applyTheme();
+  toast(S.theme.light ? '☀️ Açık tema aktif' : '🌙 Koyu tema aktif', 'ok');
 }
 
 /* ---------- RENDER dispatch (sayfalar HTML olarak içerikte) ---------- */
